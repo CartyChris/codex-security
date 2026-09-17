@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
-export const metadata: Metadata = { title: 'OmniForge Security', description: 'Application security testing harness powered by Codex Security' }
+export const metadata: Metadata = { title: 'OmniForge Harness', description: 'OmniForge Cyber AI application security testing harness' }
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, maximumScale: 1, themeColor: '#f7f8fa' }
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="en"><body>{children}</body></html> }
