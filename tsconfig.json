@@ -34,7 +34,7 @@
   "exclude": [
     "node_modules",
     "plugins/codex-security/mcp-app/**/*.ts",
-    "sdk/typescript/dashboard/**/*.tsx",
-    "sdk/typescript/scripts/**/*.ts"
+    "sdk/typescript/**/*.ts",
+    "sdk/typescript/**/*.tsx"
   ]
 }
