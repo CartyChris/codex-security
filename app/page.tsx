@@ -1,23 +1,57 @@
 'use client'
 
-import { useState } from 'react'
-import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, ChevronRight, CircleDot, FileSearch, Gauge, Menu, Play, Search, ShieldCheck, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Bot, ChevronDown, Menu, Paperclip, Plus, Send, Settings, ShieldCheck, Sparkles, X } from 'lucide-react'
 
-const findings = [{ title: 'Missing authorization check', path: 'src/api/projects/[id]/route.ts', severity: 'High', color: 'coral' }, { title: 'Unvalidated redirect target', path: 'src/auth/callback.ts', severity: 'Medium', color: 'amber' }, { title: 'Dependency update available', path: 'package.json', severity: 'Low', color: 'blue' }]
-const nav = [{ label: 'Overview', icon: Gauge }, { label: 'Findings', icon: AlertTriangle }, { label: 'Scan history', icon: Activity }]
+type Message = { role: 'user' | 'assistant'; content: string }
+type Model = { id: string; name: string; context_length?: number; pricing?: { prompt?: string; completion?: string } }
+
+const starterModels: Model[] = [
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o mini' },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
+  { id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash' },
+  { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1' },
+]
 
 export default function Home() {
-  const [active, setActive] = useState('Overview'); const [running, setRunning] = useState(false); const [menu, setMenu] = useState(false)
-  function runScan() { setRunning(true); window.setTimeout(() => setRunning(false), 1800) }
-  return <main className="app-shell">
-    <header className="topbar"><button className="icon-button mobile-menu" onClick={() => setMenu(!menu)} aria-label="Open navigation"><Menu size={20}/></button><div className="brand"><span className="brand-mark"><ShieldCheck size={18}/></span><span>OmniForge</span><small>CYBER AI</small></div><div className="header-actions"><span className="status"><CircleDot size={12}/> Harness ready</span><button className="avatar" aria-label="Account">C</button></div></header>
-    <div className="workspace"><aside className={menu ? 'sidebar open' : 'sidebar'}><div className="project"><span className="project-icon">OF</span><div><strong>omniforge-harness</strong><span>Local workspace</span></div><ChevronRight size={16}/></div><nav>{nav.map(({label, icon: Icon}) => <button key={label} className={active === label ? 'nav-item active' : 'nav-item'} onClick={() => {setActive(label);setMenu(false)}}><Icon size={18}/>{label}{label === 'Findings' && <b>3</b>}</button>)}</nav><div className="side-bottom"><button className="nav-item"><SlidersHorizontal size={18}/> Harness settings</button><div className="mode-card"><Sparkles size={16}/><div><strong>Expert mode</strong><span>Deep analysis enabled</span></div><span className="switch on"/></div></div></aside>
-    <section className="content"><div className="page-heading"><div><p className="eyebrow">APPLICATION SECURITY / {active.toUpperCase()}</p><h1>{active === 'Overview' ? 'Good morning, Chris.' : active}</h1><p className="subhead">Your security posture at a glance.</p></div><button className="primary" onClick={runScan} disabled={running}>{running ? <><Activity size={17} className="spin"/> Scanning…</> : <><Play size={17} fill="currentColor"/> Run scan</>}</button></div>
-      <div className="scan-banner"><div className="banner-icon"><ShieldCheck size={21}/></div><div><strong>Workspace protected</strong><span>Last scan completed today at 09:42 · 2m 18s</span></div><button className="text-button">View report <ArrowUpRight size={15}/></button></div>
-      <div className="metrics"><Metric label="Security score" value="87" suffix="/100" trend="+6 this week" good/><Metric label="Open findings" value="3" trend="1 high priority"/><Metric label="Files analyzed" value="1,248" trend="Across 6 packages"/></div>
-      <div className="grid"><section className="panel findings"><div className="panel-head"><div><h2>Needs attention</h2><p>Prioritized by exploitability and impact</p></div><button className="ghost">See all <ChevronRight size={15}/></button></div>{findings.map((f) => <div className="finding" key={f.title}><span className={`severity ${f.color}`}><AlertTriangle size={15}/></span><div className="finding-copy"><strong>{f.title}</strong><span>{f.path}</span></div><span className={`tag ${f.color}`}>{f.severity}</span><ChevronRight size={17} className="muted"/></div>)}</section><section className="panel activity"><div className="panel-head"><div><h2>Scan activity</h2><p>Recent harness operations</p></div><button className="icon-button" aria-label="Search activity"><Search size={17}/></button></div><div className="timeline"><Event title="Full repository scan" meta="Today, 09:42 · 1,248 files" icon={<CheckCircle2/>} done/><Event title="Threat model refreshed" meta="Yesterday, 16:18 · 6 attack paths" icon={<ShieldCheck/>} done/><Event title="Baseline configured" meta="Sep 14, 11:06 · OmniForge Cyber AI" icon={<FileSearch/>} done/></div></section></div>
-      <footer><span><span className="pulse"/> OmniForge Cyber AI engine v2.4.1</span><span>All analysis stays in your workspace</span></footer></section></div>{running && <div className="toast"><Activity size={17} className="spin"/> Deep scan in progress <button onClick={() => setRunning(false)} aria-label="Dismiss"><X size={15}/></button></div>}
-  </main>
+  const [apiKey, setApiKey] = useState('')
+  const [model, setModel] = useState(starterModels[0].id)
+  const [models, setModels] = useState(starterModels)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [mobileNav, setMobileNav] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => { setApiKey(sessionStorage.getItem('omniforge-openrouter-key') || '') }, [])
+  const selected = useMemo(() => models.find((item) => item.id === model), [model, models])
+
+  async function loadModels() {
+    if (!apiKey.trim()) { setNotice('Add your OpenRouter key first.'); return }
+    setNotice('Loading every model available to your key…')
+    const response = await fetch(`/api/models?key=${encodeURIComponent(apiKey.trim())}`)
+    const data = await response.json()
+    if (!response.ok) { setNotice(data.error || 'Could not load models.'); return }
+    setModels(data.data)
+    setNotice(`${data.data.length.toLocaleString()} OpenRouter models loaded.`)
+  }
+
+  async function sendMessage(text = input) {
+    const content = text.trim()
+    if (!content || sending) return
+    if (!apiKey.trim()) { setSettingsOpen(true); setNotice('Add your OpenRouter key to chat.'); return }
+    const next = [...messages, { role: 'user' as const, content }]
+    setMessages(next); setInput(''); setSending(true); setNotice('')
+    const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiKey: apiKey.trim(), model, messages: next }) })
+    const data = await response.json()
+    setMessages([...next, { role: 'assistant', content: response.ok ? data.text : `OpenRouter error: ${data.error}` }])
+    setSending(false)
+  }
+
+  function saveKey(value: string) { setApiKey(value); sessionStorage.setItem('omniforge-openrouter-key', value); setNotice('Key saved for this browser session.') }
+
+  return <main className="chat-app">
+    <header className="chat-topbar"><button className="mobile-only icon-button" onClick={() => setMobileNav(!mobileNav)} aria-label="Open menu"><Menu size={20}/></button><div className="brand"><span className="brand-mark"><ShieldCheck size={18}/></span><span>OmniForge</span><small>CYBER AI</small></div><div className="top-actions"><button className="model-picker"><Bot size={16}/><span>{selected?.name || model}</span><ChevronDown size={15}/></button><button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings"><Settings size={19}/></button></div></header>
+    <div className="chat-layout"><aside className={mobileNav ? 'chat-sidebar open' : 'chat-sidebar'}><button className="new-chat" onClick={() => setMessages([])}><Plus size={17}/> New chat</button><div className="sidebar-label">Workspace</div><button className="side-link active"><Sparkles size={16}/> AI chat</button><button className="side-link"><ShieldCheck size={16}/> Security analysis</button><div className="side-spacer"/><div className="secure-note"><ShieldCheck size={15}/><span>Keys stay in this browser session.</span></div></aside><section className="chat-main"><div className="conversation">{messages.length === 0 ? <div className="welcome"><div className="welcome-mark"><Sparkles size={26}/></div><h1>How can I help secure your work?</h1><p>Chat with any OpenRouter model for code review, threat modeling, incident response, and security research.</p><div className="suggestions"><button onClick={() => sendMessage('Review this application for the most important security risks and prioritize fixes.')}>Review an application</button><button onClick={() => sendMessage('Create a defensive incident response playbook for a suspected credential leak.')}>Create a response plan</button><button onClick={() => sendMessage('Explain how to harden an API against common web vulnerabilities.')}>Harden an API</button></div></div> : messages.map((message, index) => <div className={`message ${message.role}`} key={`${message.role}-${index}`}><div className="message-avatar">{message.role === 'assistant' ? <Sparkles size={15}/> : 'C'}</div><div className="message-body"><strong>{message.role === 'assistant' ? 'OmniForge AI' : 'You'}</strong><p>{message.content}</p></div></div>)}{sending && <div className="message assistant"><div className="message-avatar"><Sparkles size={15}/></div><div className="message-body"><strong>OmniForge AI</strong><p className="typing">Thinking…</p></div></div>}</div><div className="composer-wrap"><div className="composer"><button className="icon-button" aria-label="Attach file"><Paperclip size={19}/></button><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); sendMessage() } }} placeholder="Message OmniForge AI…" rows={1}/><button className="send-button" onClick={() => sendMessage()} disabled={!input.trim() || sending} aria-label="Send message"><Send size={17}/></button></div><small>AI can make mistakes. Review important security decisions.</small></div></section></div>{notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss"><X size={14}/></button></div>}{settingsOpen && <div className="modal-backdrop" onClick={() => setSettingsOpen(false)}><section className="settings-modal" onClick={(event) => event.stopPropagation()}><div className="modal-head"><div><h2>OpenRouter settings</h2><p>Connect your key to unlock every model available through OpenRouter.</p></div><button className="icon-button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={18}/></button></div><label htmlFor="api-key">OpenRouter API key</label><input id="api-key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-or-v1-…" autoComplete="off"/><p className="security-copy">Your key is sent only to OpenRouter through this app&apos;s server route and kept in session storage on this device. Never share it publicly.</p><div className="modal-actions"><button className="secondary-button" onClick={() => saveKey(apiKey)}>Save key</button><button className="primary" onClick={() => { saveKey(apiKey); loadModels() }}>Save and load models</button></div><label htmlFor="model-select">Active model</label><select id="model-select" value={model} onChange={(event) => setModel(event.target.value)}>{models.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</select><p className="model-count">{models.length.toLocaleString()} models available in this session.</p></section></div>}</main>
 }
-function Metric({label,value,suffix,trend,good}:{label:string,value:string,suffix?:string,trend:string,good?:boolean}) { return <div className="metric"><span>{label}</span><strong>{value}<small>{suffix}</small></strong><em className={good ? 'good' : ''}>{good && '↗ '}{trend}</em></div> }
-function Event({title,meta,icon,done}:{title:string,meta:string,icon:React.ReactNode,done?:boolean}) { return <div className="event"><span className={done ? 'event-icon done' : 'event-icon'}>{icon}</span><div><strong>{title}</strong><span>{meta}</span></div></div> }
