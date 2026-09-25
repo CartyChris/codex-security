@@ -22,3 +22,8 @@ __pycache__/
 .next/
 next-env.d.ts
 *.tsbuildinfo
+
+# macOS desktop build output
+desktop/node_modules/
+desktop/server/
+desktop/dist/

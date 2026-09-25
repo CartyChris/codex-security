@@ -1,5 +1,5 @@
 export type Severity = 'High' | 'Medium' | 'Low'
-export type View = 'overview' | 'findings' | 'history' | 'chat'
+export type View = 'overview' | 'monitoring' | 'findings' | 'remediation' | 'attack' | 'compliance' | 'history' | 'chat' | 'tools' | 'runs' | 'artifacts' | 'workspace' | 'secrets' | 'models' | 'diagnostics'
 export type Theme = 'light' | 'dark' | 'system'
 
 export type Finding = {
@@ -11,7 +11,13 @@ export type Finding = {
   detail: string
   fix: string
   resolved?: boolean
+  status?: 'todo' | 'doing' | 'done'
 }
+
+export type Run = { id: string; toolKey: string; title: string; input: string; output: string; error?: string; model: string; status: 'running' | 'done' | 'error'; started: number; finished?: number }
+export type Artifact = { id: string; name: string; language: string; content: string; source: string; created: number }
+export type WorkspaceFile = { id: string; name: string; path: string; size: number; language: string; text: string }
+export type AppEvent = { id: string; t: number; kind: 'scan' | 'tool' | 'chat' | 'file' | 'finding' | 'secret' | 'system'; text: string }
 
 export type ScanEvent = {
   id: string
@@ -69,7 +75,7 @@ export const starterModels: Model[] = [
   { id: 'mistralai/mistral-large', name: 'Mistral Large' },
 ]
 
-export const accents = ['violet', 'teal', 'blue', 'coral']
+export const accents = ['violet', 'blue', 'cyan', 'teal', 'emerald', 'amber', 'coral', 'rose']
 
 export const suggestions = [
   { title: 'Review an application', prompt: 'Review this application for the most important security risks and prioritize fixes.' },
@@ -90,3 +96,27 @@ export function formatContext(tokens?: number) {
   if (!tokens) return ''
   return tokens >= 1000 ? `${Math.round(tokens / 1000)}K context` : `${tokens} context`
 }
+
+const extensions: Record<string, string> = {
+  ts: 'TypeScript', tsx: 'TypeScript', js: 'JavaScript', jsx: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', py: 'Python', go: 'Go', rs: 'Rust', java: 'Java', kt: 'Kotlin', swift: 'Swift', rb: 'Ruby', php: 'PHP', cs: 'C#', c: 'C', h: 'C', cpp: 'C++', hpp: 'C++',
+  html: 'HTML', css: 'CSS', scss: 'CSS', json: 'JSON', yml: 'YAML', yaml: 'YAML', toml: 'TOML', md: 'Markdown', sql: 'SQL', sh: 'Shell', bash: 'Shell', tf: 'Terraform', dockerfile: 'Dockerfile', env: 'Env', xml: 'XML', lua: 'Lua', gd: 'GDScript',
+}
+
+export function languageOf(name: string) {
+  const lower = name.toLowerCase()
+  if (lower === 'dockerfile' || lower.endsWith('.dockerfile')) return 'Dockerfile'
+  if (lower.startsWith('.env')) return 'Env'
+  return extensions[lower.split('.').pop() || ''] || 'Other'
+}
+
+export function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+export function extractCodeBlocks(text: string) {
+  return [...text.matchAll(/```([\w+-]*)\n([\s\S]*?)```/g)].map((match) => ({ language: match[1] || 'text', content: match[2].trimEnd() }))
+}
+
+export function uid(prefix: string) { return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}` }
