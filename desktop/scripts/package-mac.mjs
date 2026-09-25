@@ -1,5 +1,6 @@
 // Packages OmniForge.app for Apple Silicon and Intel Macs, signs each bundle ad hoc, and zips it.
 // Usage: node scripts/package-mac.mjs [--arch=arm64|x64|all] [--platform=darwin|linux]
+//   ELECTRON_ZIP_DIR=<dir> uses Electron release zips already downloaded to <dir>.
 //   --platform=linux builds a Linux copy of the same app, used to smoke-test the shell off a Mac.
 import { execFileSync } from 'node:child_process'
 import { existsSync, rmSync } from 'node:fs'
@@ -32,6 +33,7 @@ const appPaths = await packager({
   darwinDarkModeSupport: true,
   asar: true,
   overwrite: true,
+  ...(process.env.ELECTRON_ZIP_DIR ? { electronZipDir: process.env.ELECTRON_ZIP_DIR } : {}),
   prune: true,
   extraResource: [join(desktop, 'server')],
   ignore: [/^\/server($|\/)/, /^\/dist($|\/)/, /^\/scripts($|\/)/, /^\/build($|\/)/, /^\/README\.md$/],
