@@ -17,3 +17,8 @@ __pycache__/
 
 # Never publish internal-only plugin data.
 .internal/
+
+# Next.js harness build output
+.next/
+next-env.d.ts
+*.tsbuildinfo
