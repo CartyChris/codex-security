@@ -59,7 +59,7 @@ export default function SecurityLab() {
     setNotice('Report exported. Source contents are not included; file paths and findings are included.')
   }
   return <main className={styles.lab}>
-    <header className={styles.header}><Link href="/" aria-label="Back to AI chat" className={styles.back}><ArrowLeft size={18} /></Link><Link href="/" className={styles.brand}><Shield size={22} /> OmniForge</Link><span className={styles.badge}>SECURITY LAB</span></header>
+    <header className={styles.header}><Link href="/" aria-label="Back to AI chat" className={styles.back}><ArrowLeft size={18} /></Link><Link href="/" className={styles.brand}><Shield size={22} /> OmniForge</Link><Link href="/account" className={styles.badge} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>ACCOUNT</Link></header>
     <div className={styles.workspace}>
       <section className={styles.hero}><div className={styles.eyebrow}><span /> YOUR CODE. A CLOSER LOOK.</div><h1>Build confidence.<br /><span>Before you ship.</span></h1><p>A focused workbench for source review, adversarial thinking, and defensive validation. Evidence first. No imaginary test results.</p><div className={styles.heroMeta}><span><LockKeyhole size={14} /> Local-only review</span><span><FlaskConical size={14} /> {rules.length} source checks</span></div></section>
       <div className={styles.columns}><section className={styles.panel} aria-labelledby="scope-title">
