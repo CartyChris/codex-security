@@ -32,15 +32,22 @@ export async function POST(request: Request) {
   if (!user) return githubResponse({ error: 'Sign in to run validation.' }, 401)
   if (!validGithubOrigin(request)) return githubResponse({ error: 'Invalid request origin.' }, 403)
   let files
+  let mode: 'syntax' | 'node-test' = 'syntax'
   try {
     const body = await request.json()
     if (body.authorized !== true) throw new Error('Confirm ownership or permission first.')
-    files = validateSnapshot(body.files).filter(file => /\.(js|mjs|cjs)$/.test(file.path))
-    if (!files.length || files.length > 30) throw new Error('Choose 1–30 JavaScript files (.js, .mjs, .cjs).')
+    if (body.mode !== undefined && body.mode !== 'syntax' && body.mode !== 'node-test') throw new Error('Unsupported validation mode.')
+    mode = body.mode ?? 'syntax'
+    if (mode === 'node-test' && body.executeConfirmed !== true) throw new Error('Explicitly confirm execution of the uploaded test code.')
+    files = validateSnapshot(body.files)
+    if (mode === 'syntax') {
+      files = files.filter(file => /\.(js|mjs|cjs)$/.test(file.path))
+      if (!files.length || files.length > 30) throw new Error('Choose 1–30 JavaScript files (.js, .mjs, .cjs).')
+    } else if (!files.some(file => /\.test\.(?:mjs|cjs|js|ts)$/.test(file.path))) throw new Error('Include at least one .test.js, .test.mjs, .test.cjs or .test.ts file and its local imports.')
   } catch (error) { return githubResponse({ error: error instanceof Error ? error.message : 'Invalid source scope.' }, 400) }
   const id = String(Math.floor(Date.now() / 60000) * 60000)
   const path = `${prefix(user.id)}${id}.json`
-  const report = { id, createdAt: new Date().toISOString(), kind: 'Node.js syntax validation', status: 'running', limitation: 'Syntax only, not security or runtime tests. No dependencies installed. No imported code executed. Source paths and hashes are retained, not source contents.', files: files.map(file => ({ path: file.path, sha256: createHash('sha256').update(file.content).digest('hex') })), results: [] as { path: string; exitCode: number }[], cleanup: 'not-started' }
+  const report = { id, createdAt: new Date().toISOString(), kind: mode === 'syntax' ? 'Node.js syntax validation' : 'Node.js test runner', status: 'running', limitation: mode === 'syntax' ? 'Syntax only, not security or runtime tests. No dependencies installed. No imported code executed. Source paths and hashes are retained, not source contents.' : 'Executes uploaded .test files and local imports using Node.js 24 built-in test runner. No dependencies installed, no network, no project credentials. Plain erasable TypeScript only; no JSX or framework transforms. Exit codes are retained, not source contents or test output. Not a security verdict.', files: files.map(file => ({ path: file.path, sha256: createHash('sha256').update(file.content).digest('hex') })), results: [] as { path: string; exitCode: number }[], cleanup: 'not-started' }
   try {
     await put(path, JSON.stringify(report), { ...storage(), access: 'private', addRandomSuffix: false, allowOverwrite: false, contentType: 'application/json' })
   } catch (error) {
@@ -50,10 +57,18 @@ export async function POST(request: Request) {
   let sandbox: Sandbox | undefined
   try {
     sandbox = await Sandbox.create({ runtime: 'node24', persistent: false, networkPolicy: 'deny-all', timeout: 30000, resources: { vcpus: 2 } })
-    await sandbox.writeFiles(files.map((file, index) => ({ path: `/vercel/sandbox/source-${index}${'.' + file.path.split('.').pop()}`, content: Buffer.from(file.content) })))
-    for (const [index, file] of files.entries()) {
-      const result = await sandbox.runCommand('node', ['--check', `/vercel/sandbox/source-${index}${'.' + file.path.split('.').pop()}`])
-      report.results.push({ path: file.path, exitCode: result.exitCode })
+    if (mode === 'node-test') {
+      const root = '/vercel/sandbox/scope'
+      await sandbox.writeFiles(files.map(file => ({ path: `${root}/${file.path}`, content: Buffer.from(file.content) })))
+      const tests = files.filter(file => /\.test\.(?:mjs|cjs|js|ts)$/.test(file.path))
+      const result = await sandbox.runCommand({ cmd: 'node', args: ['--experimental-strip-types', '--test', '--test-reporter=dot', ...tests.map(file => `${root}/${file.path}`)], cwd: root })
+      report.results.push({ path: 'Uploaded test suite', exitCode: result.exitCode })
+    } else {
+      await sandbox.writeFiles(files.map((file, index) => ({ path: `/vercel/sandbox/source-${index}${'.' + file.path.split('.').pop()}`, content: Buffer.from(file.content) })))
+      for (const [index, file] of files.entries()) {
+        const result = await sandbox.runCommand('node', ['--check', `/vercel/sandbox/source-${index}${'.' + file.path.split('.').pop()}`])
+        report.results.push({ path: file.path, exitCode: result.exitCode })
+      }
     }
     report.status = report.results.every(result => result.exitCode === 0) ? 'passed' : 'failed'
   } catch { report.status = 'infrastructure-error' }
