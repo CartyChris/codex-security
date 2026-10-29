@@ -6,9 +6,11 @@ import { ArrowLeft, ArrowUpRight, Check, Download, FileCode2, FlaskConical, Fold
 import { MAX_BYTES, MAX_FILES, reviewSources, rules, sourcePathAllowed, toSarif, type SourceFile, type Finding } from '../lib/security-review'
 import styles from './security-lab.module.css'
 import SourceSnapshots from './source-snapshots'
+import GithubImport, { type GithubScope } from './github-import'
 
 export default function SecurityLab() {
   const [files, setFiles] = useState<SourceFile[]>([])
+  const [githubScope, setGithubScope] = useState<GithubScope | null>(null)
   const [findings, setFindings] = useState<Finding[] | null>(null)
   const [mode, setMode] = useState<'purple' | 'red' | 'blue'>('purple')
   const [filter, setFilter] = useState('all')
@@ -33,6 +35,8 @@ export default function SecurityLab() {
       const textSources = sources.filter((file) => !file.content.includes('\0'))
       if (!textSources.length) throw new Error('No readable text files found.')
       setFiles(textSources)
+      setGithubScope(null)
+      setAuthorized(false)
       setFindings(null)
       setCompleted([])
       setNotice(`${textSources.length} files ready. ${all.length - textSources.length} unsupported, generated, or credential files skipped. Nothing was uploaded.`)
@@ -50,7 +54,7 @@ export default function SecurityLab() {
   }
   function exportReport(format: 'json' | 'sarif') {
     if (!findings) return
-    const report = format === 'sarif' ? toSarif(findings) : { tool: 'OmniForge local pattern review', generatedAt: new Date().toISOString(), mode, scope: files.map(({ path }) => path), checks: rules.map(({ id }) => id), limitations: 'Heuristic source patterns only. No code execution, dependency analysis, or verified exploitability. Completed checkboxes are user-reported, not test results.', findings, userReviewed: completed }
+    const report = format === 'sarif' ? toSarif(findings) : { tool: 'OmniForge local pattern review', generatedAt: new Date().toISOString(), mode, githubScope, scope: files.map(({ path }) => path), checks: rules.map(({ id }) => id), limitations: 'Heuristic source patterns only. No code execution, dependency analysis, or verified exploitability. Completed checkboxes are user-reported, not test results.', findings, userReviewed: completed }
     const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }))
     const link = document.createElement('a')
     link.href = url
@@ -67,7 +71,9 @@ export default function SecurityLab() {
         <div className={styles.sectionHeading}><span className={styles.step}>01</span><div><h2 id="scope-title">Define your scope</h2><p>Start with the code you want to review.</p></div></div>
         <div className={styles.dropzone} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!busy) void importFiles(event.dataTransfer.files) }}><span className={styles.uploadIcon}><Upload size={24} /></span><h3>Bring your code</h3><p>Select source files or a project folder.<br />Reviewed locally. Uploaded only when you choose to save privately.</p><div className={styles.buttons}><button onClick={() => fileInput.current?.click()} disabled={busy} className={styles.primary}><FileCode2 size={16} /> Select files</button><button onClick={() => folderInput.current?.click()} disabled={busy} className={styles.secondary}><FolderOpen size={16} /> Folder</button></div><small>Text/code · 150 files · 2 MB · No ZIPs or binaries</small><input ref={fileInput} type="file" multiple hidden onChange={selectFiles} /><input ref={folderInput} type="file" multiple hidden {...{ webkitdirectory: '' }} onChange={selectFiles} /></div>
         {files.length > 0 && <details className={styles.fileList}><summary>{files.length} files in scope</summary>{files.map((file, index) => <div key={`${file.path}-${index}`}><FileCode2 size={14} /><span>{file.path}</span><button aria-label={`Remove ${file.path}`} onClick={() => { setFiles(files.filter((_, position) => position !== index)); setFindings(null); setCompleted([]) }}><X size={14} /></button></div>)}</details>}
-        <SourceSnapshots files={files} authorized={authorized} onOpen={(saved) => { setFiles(saved); setFindings(null); setCompleted([]); setAuthorized(false); setNotice('Private snapshot loaded. Previous findings cleared.') }} />
+        <GithubImport onImport={(sources, scope) => { setFiles(sources); setGithubScope(scope); setFindings(null); setCompleted([]); setAuthorized(false); setNotice(`Imported ${scope.repository} at ${scope.commit}. Confirm authorization before reviewing.`) }} />
+        {githubScope && <p className={styles.disclaimer} style={{ overflowWrap: 'anywhere' }}>Source: {githubScope.repository} · commit {githubScope.commit}</p>}
+        <SourceSnapshots files={files} authorized={authorized} onOpen={(saved) => { setFiles(saved); setGithubScope(null); setFindings(null); setCompleted([]); setAuthorized(false); setNotice('Private snapshot loaded. Previous findings cleared.') }} />
         <div className={styles.sectionHeading}><span className={styles.step}>02</span><div><h2>Choose your perspective</h2><p>Same evidence. Different verification plans.</p></div></div>
         <div className={styles.modes} role="group" aria-label="Review perspective">{([{ id: 'red', label: 'Red team', Icon: Swords, description: 'Challenge assumptions' }, { id: 'blue', label: 'Blue team', Icon: Shield, description: 'Strengthen defenses' }, { id: 'purple', label: 'Purple team', Icon: FlaskConical, description: 'Connect both sides' }] as const).map(({ id, label, Icon, description }) => <button key={id} aria-pressed={mode === id} data-active={mode === id} onClick={() => setMode(id)}><Icon size={18} /><strong>{label}</strong><small>{description}</small></button>)}</div>
         <label className={styles.consent}><input type="checkbox" checked={authorized} onChange={(event) => setAuthorized(event.target.checked)} /><span>I own this code or have permission to assess it.</span></label><button className={`${styles.primary} ${styles.run}`} disabled={!files.length || !authorized || busy} onClick={runReview}><Search size={17} /> Run local review</button>
@@ -82,7 +88,7 @@ export default function SecurityLab() {
           {visible.map((finding) => <article className={styles.finding} key={finding.id}><div className={styles.findingTop}><span data-severity={finding.severity} className={styles.severity}>{finding.severity}</span><small>NEEDS VERIFICATION</small></div><h3>{finding.title}</h3><code>{finding.path}:{finding.line}</code><p>{finding.remediation}</p><details><summary>Verification plan</summary>{mode !== 'blue' && <div className={styles.plan}><strong><Swords size={14} /> Red-team hypothesis</strong><p>{finding.red}</p></div>}{mode !== 'red' && <div className={styles.plan}><strong><Shield size={14} /> Blue-team validation</strong><p>{finding.blue}</p></div>}<label className={styles.consent}><input type="checkbox" checked={completed.includes(finding.id)} onChange={(event) => setCompleted((current) => event.target.checked ? [...current, finding.id] : current.filter((id) => id !== finding.id))} />I manually reviewed this finding</label></details></article>)}
         </>}
       </section></div>
-      <section className={styles.roadmap}><div><p className={styles.eyebrow}>NEXT: CONNECTED EXECUTION</p><h2>From review to real validation.</h2><p>These capabilities require backend setup. They are not active in this local review.</p></div><div className={styles.roadmapGrid}>{[{ title: 'Repository workspaces', text: 'Read-only GitHub access, commit-pinned scopes, and saved run history. Private source snapshots are available above.', href: 'https://vercel.com/docs/vercel-connect', label: 'Managed access' }, { title: 'Disposable sandboxes', text: 'Isolated Linux microVMs, deny-by-default networking, bounded runs, and cleanup.', href: 'https://vercel.com/docs/vercel-sandbox', label: 'Isolation architecture' }, { title: 'Deeper test suites', text: 'Semgrep static analysis, OSV dependency checks, and explicit local runtime test scenarios.', href: 'https://google.github.io/osv-scanner/', label: 'Dependency analysis' }].map((item) => <article key={item.title}><span className={styles.setupBadge}>SETUP REQUIRED</span><h3>{item.title}</h3><p>{item.text}</p><a href={item.href} target="_blank" rel="noreferrer">{item.label}<ArrowUpRight size={14} /></a></article>)}</div></section>
+      <section className={styles.roadmap}><div><p className={styles.eyebrow}>NEXT: CONNECTED EXECUTION</p><h2>From review to real validation.</h2><p>These capabilities require backend setup. They are not active in this local review.</p></div><div className={styles.roadmapGrid}>{[{ title: 'Repository workspaces', text: 'Saved run history and persistent commit provenance are planned. Read-only, commit-pinned GitHub imports and private source snapshots are available above.', href: 'https://vercel.com/docs/vercel-connect', label: 'Managed access' }, { title: 'Disposable sandboxes', text: 'Isolated Linux microVMs, deny-by-default networking, bounded runs, and cleanup.', href: 'https://vercel.com/docs/vercel-sandbox', label: 'Isolation architecture' }, { title: 'Deeper test suites', text: 'Semgrep static analysis, OSV dependency checks, and explicit local runtime test scenarios.', href: 'https://google.github.io/osv-scanner/', label: 'Dependency analysis' }].map((item) => <article key={item.title}><span className={styles.setupBadge}>SETUP REQUIRED</span><h3>{item.title}</h3><p>{item.text}</p><a href={item.href} target="_blank" rel="noreferrer">{item.label}<ArrowUpRight size={14} /></a></article>)}</div></section>
       <footer className={styles.footer}>Only assess authorized code. Local review never runs imported code or contacts its services.</footer>
     </div>
   </main>
