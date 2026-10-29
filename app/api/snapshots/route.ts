@@ -4,6 +4,11 @@ import { auth } from '../../../lib/auth'
 import { snapshotPath, snapshotPrefix, validateSnapshot } from '../../../lib/source-snapshots'
 
 export const runtime = 'nodejs'
+function privateStorage() {
+  const token = process.env.PRIVATE_SOURCE_READ_WRITE_TOKEN
+  if (!token) throw new Error('Private source storage is not configured.')
+  return { token }
+}
 const response = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } })
 
 async function access(request: Request, mutation = false) {
@@ -26,11 +31,11 @@ export async function GET(request: Request) {
     if (id) {
       let path: string
       try { path = snapshotPath(userId, id) } catch { return response({ error: 'Invalid snapshot identifier.' }, 400) }
-      const result = await get(path, { access: 'private', useCache: false })
+      const result = await get(path, { ...privateStorage(), access: 'private', useCache: false })
       if (!result || result.statusCode !== 200) return response({ error: 'Snapshot not found.' }, 404)
       return new Response(result.stream, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', ...(params.has('download') ? { 'Content-Disposition': `attachment; filename="source-snapshot-${id}.json"` } : {}) } })
     }
-    const result = await list({ prefix: snapshotPrefix(userId), limit: 50, cursor: params.get('cursor') || undefined })
+    const result = await list({ ...privateStorage(), prefix: snapshotPrefix(userId), limit: 50, cursor: params.get('cursor') || undefined })
     return response({ snapshots: result.blobs.map((blob) => ({ id: blob.pathname.split('/').pop()!.replace(/\.json$/, ''), size: blob.size, uploadedAt: blob.uploadedAt })), cursor: result.hasMore ? result.cursor : null })
   } catch { return response({ error: 'Private storage is unavailable. Please retry.' }, 503) }
 }
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
     let files
     try { files = validateSnapshot(JSON.parse(text).files) } catch (error) { return response({ error: error instanceof SyntaxError ? 'Invalid JSON.' : error instanceof Error ? error.message : 'Invalid source files.' }, 400) }
     const id = randomUUID()
-    await put(snapshotPath(userId, id), JSON.stringify({ version: 1, files }), { access: 'private', addRandomSuffix: false, contentType: 'application/json' })
+    await put(snapshotPath(userId, id), JSON.stringify({ version: 1, files }), { ...privateStorage(), access: 'private', addRandomSuffix: false, contentType: 'application/json' })
     return response({ id }, 201)
   } catch (error) {
     const wrongStore = error instanceof Error && error.message.includes('Cannot use private access on a public store')
@@ -57,5 +62,5 @@ export async function DELETE(request: Request) {
   if (!userId) return response({ error: 'Sign in and delete from this application.' }, 401)
   let path
   try { path = snapshotPath(userId, new URL(request.url).searchParams.get('id') || '') } catch { return response({ error: 'Invalid snapshot identifier.' }, 400) }
-  try { await del(path); return response({ deleted: true }) } catch { return response({ error: 'Could not delete snapshot. Please retry.' }, 503) }
+  try { await del(path, privateStorage()); return response({ deleted: true }) } catch { return response({ error: 'Could not delete snapshot. Please retry.' }, 503) }
 }
