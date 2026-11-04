@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description: 'Review source code locally with line-level evidence, red and blue team verification plans, and portable SARIF reports.',
 }
 
-export default function LabPage() {
-  return <SecurityLab />
+export default async function LabPage({ searchParams }: { searchParams: Promise<{ team?: string }> }) {
+  const { team } = await searchParams
+  return <SecurityLab initialMode={team === 'red' || team === 'blue' ? team : 'purple'} />
 }
