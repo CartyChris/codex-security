@@ -10,6 +10,7 @@ import IsolatedValidation from './isolated-validation'
 import GithubImport, { type GithubScope } from './github-import'
 
 import TestConfiguration from './test-configuration'
+import SourceExplorer from './source-explorer'
 import VerificationLibrary from './verification-library'
 import type { TeamMode } from '../lib/verification-plans'
 
@@ -76,7 +77,7 @@ export default function SecurityLab({ initialMode = 'purple' }: { initialMode?: 
     setNotice('Report exported. Source contents are not included; file paths and findings are included.')
   }
   return <main className={styles.lab} data-team={mode}>
-    <header className={styles.header}><Link href="/" aria-label="Back to AI chat" className={styles.back}><ArrowLeft size={18} /></Link><Link href="/" className={styles.brand}><Shield size={22} /> OmniForge</Link><Link href="/account" className={styles.badge} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>ACCOUNT</Link></header>
+    <header className={styles.header}><Link href="/" aria-label="Back to AI chat" className={styles.back}><ArrowLeft size={18} /></Link><Link href="/" className={styles.brand}><Shield size={22} /> OmniForge</Link><Link href="/tools" className={styles.badge} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>TOOLS</Link><Link href="/account" className={styles.badge} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>ACCOUNT</Link></header>
     <div className={styles.workspace}>
       <section className={styles.hero}><div className={styles.eyebrow}><span /> SECURITY LAB / AUTHORIZED SCOPE</div><h1>Small scope.<br /><span>Deep scrutiny.</span></h1><p>Choose your perspective. Pin down your scope. Run only the checks you need, then follow the evidence.</p><div className={styles.heroMeta}><span><LockKeyhole size={14} /> Local review + opt-in validation</span><span><FlaskConical size={14} /> {rules.length} source checks</span></div></section>
       <div className={styles.columns}><section className={styles.panel} aria-labelledby="scope-title">
@@ -96,6 +97,7 @@ export default function SecurityLab({ initialMode = 'purple' }: { initialMode?: 
       </section>
       <section className={styles.results} aria-labelledby="results-title"><div className={styles.sectionHeading}><span className={styles.step}>04</span><div><h2 id="results-title">Evidence & next steps</h2><p>{findings === null ? 'Your findings will appear here.' : `${findings.length} potential issues · ${completed.length} marked reviewed`}</p></div></div>
         <p role="status" className={styles.status}>{notice || 'Ready when you are. Select code to begin.'}</p>
+        <SourceExplorer files={scopedFiles} />
         {findings === null ? <div className={styles.empty}><div className={styles.orbit}><Shield size={38} /></div><h3>Clarity, not a security score.</h3><p>Get file and line references, suggested remediation, and concrete verification plans. No source code is included in exported reports.</p><div className={styles.coverage}>{rules.filter(rule => selectedChecks.includes(rule.id)).map((rule) => <span key={rule.id}><Check size={12} /> {rule.title}</span>)}</div></div> : <>
           <div className={styles.filters}><label><span className={styles.srOnly}>Search findings</span><input placeholder="Search findings or paths…" value={query} onChange={(event) => setQuery(event.target.value)} /></label><label><span className={styles.srOnly}>Severity</span><select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All priorities</option><option value="high">High</option><option value="medium">Medium</option></select></label></div>
           <div className={styles.buttons}><button className={styles.secondary} onClick={() => exportReport('json')}><Download size={15} /> JSON</button><button className={styles.secondary} onClick={() => exportReport('sarif')}><Download size={15} /> SARIF</button></div>
