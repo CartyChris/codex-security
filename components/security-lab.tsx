@@ -13,15 +13,22 @@ import TestConfiguration from './test-configuration'
 import SourceExplorer from './source-explorer'
 import VerificationLibrary from './verification-library'
 import type { TeamMode } from '../lib/verification-plans'
+import { useWorkspace } from './connected-workspace'
+import WorkspaceContextPanel from './workspace-context-panel'
+import { useRouter } from 'next/navigation'
 
 export default function SecurityLab({ initialMode = 'purple' }: { initialMode?: TeamMode }) {
-  const [files, setFiles] = useState<SourceFile[]>([])
-  const [githubScope, setGithubScope] = useState<GithubScope | null>(null)
-  const [findings, setFindings] = useState<Finding[] | null>(null)
+  const router = useRouter()
+  const { state, update } = useWorkspace()
+  const { files, githubScope, findings } = state
+  const setFiles = (files: SourceFile[]) => update(s => ({ ...s, files, findings: null, patches: [], report: '' }))
+  const setGithubScope = (githubScope: GithubScope | null) => update(s => ({ ...s, githubScope }))
+  const setFindings = (findings: Finding[] | null) => update(s => ({ ...s, findings }))
   const [mode, setMode] = useState<TeamMode>(initialMode)
   const [selectedChecks, setSelectedChecks] = useState<string[]>(rules.map(rule => rule.id))
-  const [include, setInclude] = useState('')
-  const [exclude, setExclude] = useState('')
+  const { include, exclude } = state
+  const setInclude = (include: string) => update(s => ({ ...s, include, findings: null, patches: [], report: '' }))
+  const setExclude = (exclude: string) => update(s => ({ ...s, exclude, findings: null, patches: [], report: '' }))
   const scopedFiles = useMemo(() => scopeSources(files, include, exclude), [files, include, exclude])
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
@@ -80,6 +87,8 @@ export default function SecurityLab({ initialMode = 'purple' }: { initialMode?: 
     <header className={styles.header}><Link href="/" aria-label="Back to AI chat" className={styles.back}><ArrowLeft size={18} /></Link><Link href="/" className={styles.brand}><Shield size={22} /> OmniForge</Link><Link href="/tools" className={styles.badge} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>TOOLS</Link><Link href="/account" className={styles.badge} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>ACCOUNT</Link></header>
     <div className={styles.workspace}>
       <section className={styles.hero}><div className={styles.eyebrow}><span /> SECURITY LAB / AUTHORIZED SCOPE</div><h1>Small scope.<br /><span>Deep scrutiny.</span></h1><p>Choose your perspective. Pin down your scope. Run only the checks you need, then follow the evidence.</p><div className={styles.heroMeta}><span><LockKeyhole size={14} /> Local review + opt-in validation</span><span><FlaskConical size={14} /> {rules.length} source checks</span></div></section>
+      <WorkspaceContextPanel compact />
+      <div className={styles.buttons}>{(['/','/orchestrator'] as const).map(destination => <button key={destination} className={styles.secondary} disabled={!authorized || !scopedFiles.length || !selectedChecks.length || busy} onClick={() => { runReview(); router.push(destination) }}>Scan & send to {destination === '/' ? 'AI chat' : 'orchestrator'}</button>)}</div>
       <div className={styles.columns}><section className={styles.panel} aria-labelledby="scope-title">
         <div className={styles.sectionHeading}><span className={styles.step}>01</span><div><h2 id="scope-title">Define your scope</h2><p>Start with the code you want to review.</p></div></div>
         <div className={styles.dropzone} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!busy) void importFiles(event.dataTransfer.files) }}><span className={styles.uploadIcon}><Upload size={24} /></span><h3>Bring your code</h3><p>Select source files or a project folder.<br />Reviewed locally. Uploaded only when you save privately or run isolated validation.</p><div className={styles.buttons}><button onClick={() => fileInput.current?.click()} disabled={busy} className={styles.primary}><FileCode2 size={16} /> Select files</button><button onClick={() => folderInput.current?.click()} disabled={busy} className={styles.secondary}><FolderOpen size={16} /> Folder</button></div><small>Text/code · 150 files · 2 MB · No ZIPs or binaries</small><input ref={fileInput} type="file" multiple hidden onChange={selectFiles} /><input ref={folderInput} type="file" multiple hidden {...{ webkitdirectory: '' }} onChange={selectFiles} /></div>

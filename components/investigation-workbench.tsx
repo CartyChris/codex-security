@@ -5,8 +5,12 @@ import Link from 'next/link'
 import { ArrowLeft, Check, Copy, Download, LockKeyhole, Play, Shield, Wrench } from 'lucide-react'
 import { MAX_TOOL_CHARS, runInvestigationTool, toolCatalog, type ToolId } from '../lib/investigation-tools'
 import styles from './investigation-workbench.module.css'
+import { useWorkspace } from './connected-workspace'
+import WorkspaceContextPanel from './workspace-context-panel'
+import ExecutionFeed from './execution-feed'
 
 export default function InvestigationWorkbench() {
+  const { state, event } = useWorkspace()
   const [tool, setTool] = useState<ToolId>('jwt')
   const [input, setInput] = useState(''), [second, setSecond] = useState(''), [option, setOption] = useState('')
   const [output, setOutput] = useState<string | null>(null), [error, setError] = useState(''), [status, setStatus] = useState(''), [busy, setBusy] = useState(false)
@@ -16,7 +20,7 @@ export default function InvestigationWorkbench() {
   async function run() {
     if (busy) return
     clearResult(); setBusy(true)
-    try { const result = await runInvestigationTool(tool, input, option, second); setOutput(tool === 'codec' ? String(result) : JSON.stringify(result, null, 2)); setStatus('Completed locally. No network requests were made.') }
+    try { const result = await runInvestigationTool(tool, input, option, second); setOutput(tool === 'codec' ? String(result) : JSON.stringify(result, null, 2)); event('investigation', tool, JSON.stringify(result)); setStatus('Completed locally. Result shared in workspace telemetry. No network requests were made.') }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to process input.') }
     finally { setBusy(false) }
   }
@@ -32,7 +36,9 @@ export default function InvestigationWorkbench() {
     <div className={styles.content}>
       <div className={styles.eyebrow}><Wrench size={14} /> INVESTIGATION / LOCAL TOOLS</div>
       <h1>Inspect. Decode.<br /><span>Understand.</span></h1><p className={styles.intro}>Small, precise tools for the evidence in front of you. No agents, silent requests, or invented verdicts.</p>
-      <p className={styles.boundary}><LockKeyhole size={15} /><span>Runs in this browser · inputs are not saved · outputs may contain sensitive data</span></p>
+      <p className={styles.boundary}><LockKeyhole size={15} /><span>Runs in this browser · results join shared telemetry · optional browser saving may retain sensitive output</span></p>
+      <WorkspaceContextPanel compact /><ExecutionFeed />
+      {state.files.length > 0 && <label>Load shared source into tool<select style={{ fontSize: 16, minHeight: 44, maxWidth: '100%' }} value="" onChange={e => { const file = state.files.find(f => f.path === e.target.value); if (file) { setInput(file.content.slice(0, MAX_TOOL_CHARS)); clearResult(); if (file.content.length > MAX_TOOL_CHARS) setStatus('Source truncated to tool input limit.') } }}><option value="">Choose a source file…</option>{state.files.map(f => <option key={f.path}>{f.path}</option>)}</select></label>}
       <nav className={styles.tools} aria-label="Investigation tools">{toolCatalog.map(item => <button key={item.id} aria-pressed={tool === item.id} disabled={busy} onClick={() => choose(item.id)}><small>{item.category}</small><span>{item.name}{tool === item.id && <Check size={14} />}</span></button>)}</nav>
       <div className={styles.workspace}>
         <section className={styles.panel} aria-labelledby="tool-title"><div className={styles.sectionLabel}>01 / INPUT</div><h2 id="tool-title">{definition.name}</h2><p>{definition.description}</p>
@@ -47,7 +53,7 @@ export default function InvestigationWorkbench() {
           {output !== null ? <><div className={styles.actions}><button onClick={copy}><Copy size={14} /> Copy</button><button onClick={download}><Download size={14} /> Export</button></div><pre tabIndex={0} aria-label="Tool output">{output || '(empty string)'}</pre></> : <div className={styles.empty}><Shield size={28} /><strong>Evidence, not a score.</strong><p>Results appear only after you run a tool. Imported text and HTML are never executed.</p></div>}
         </section>
       </div>
-      <details className={styles.notes}><summary>What was brought over—and what was not</summary><p>Inspired by OPERATOR&apos;s local inspection tools, Astra&apos;s utilities, and Liquid X&apos;s portable transcripts. Source browsing and literal search are in Security Lab; transcript import/export is in AI chat.</p><p>These tools replace silent parsing failures with errors, handle UTF-8 correctly, preserve insertions in diffs, and distinguish JWT decoding from verification. Credential matches report locations, not secret values.</p><p>Mock model output, simulated packet feeds, fabricated posture scores, browser fingerprinting, and unattended target requests were not imported. Live telemetry and multi-model orchestration are not provided by this workbench.</p></details>
+      <details className={styles.notes}><summary>What was brought over—and what was not</summary><p>Inspired by OPERATOR&apos;s local inspection tools, Astra&apos;s utilities, and Liquid X&apos;s portable transcripts. Source browsing and literal search are in Security Lab; transcript import/export is in AI chat.</p><p>These tools replace silent parsing failures with errors, handle UTF-8 correctly, preserve insertions in diffs, and distinguish JWT decoding from verification. Credential matches report locations, not secret values.</p><p>AI chat and the AI orchestrator now share source scope, model outputs, and actual tool telemetry. The orchestrator offers opt-in browser diagnostics and HAR metadata import—not live packet capture. Source metrics are observations, not an invented posture score. Unattended external target requests and destructive actions remain unavailable.</p></details>
     </div>
   </main>
 }
